@@ -1,0 +1,463 @@
+name: ci-expansion prestodb/presto
+'on':
+  push:
+    branches:
+    - run/**
+jobs:
+  arrowflight-java-tests:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        java:
+        - 8
+        - 17
+        - 25
+        modules:
+        - :presto-common-arrow
+        - :presto-base-arrow-flight
+        - :presto-flight-shim
+        os:
+        - ubuntu-latest
+        - ubuntu-24.04-arm
+        - windows-latest
+        - windows-11-arm
+        - macos-15-intel
+        - macos-latest
+        attempt:
+        - 1
+      max-parallel: 10
+    timeout-minutes: 60
+    concurrency:
+      group: ${{ github.workflow }}-test-${{ matrix.modules }}-${{ github.event.pull_request.number }}-${{ matrix.java }}
+      cancel-in-progress: true
+    steps:
+    - uses: actions/checkout@v6
+      if: needs.changes.outputs.codechange == 'true'
+      with:
+        show-progress: false
+        persist-credentials: false
+        repository: prestodb/presto
+        ref: f0872041be5b270237dcdf7da13445b51d1756d3
+    - uses: actions/checkout@v4
+      with:
+        path: _ci_expansion
+    - shell: bash
+      working-directory: .
+      run: f=$GITHUB_WORKSPACE/_ci_expansion/subject.patch; if [ -s $f ]; then git apply --ignore-whitespace $f; fi; rm -rf $GITHUB_WORKSPACE/_ci_expansion
+    - uses: actions/setup-java@v5
+      if: needs.changes.outputs.codechange == 'true'
+      with:
+        distribution: temurin
+        java-version: ${{ matrix.java }}
+        cache: maven
+    - name: Clean up before build
+      if: needs.changes.outputs.codechange == 'true'
+      run: 'sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
+
+        sudo rm -rf /opt/hostedtoolcache/CodeQL
+
+        df -h
+
+        docker system prune -af || true
+
+        '
+    - name: Download nodejs to maven cache
+      if: needs.changes.outputs.codechange == 'true'
+      run: .github/bin/download_nodejs
+    - name: Maven Install
+      if: needs.changes.outputs.codechange == 'true'
+      run: 'export MAVEN_OPTS="${MAVEN_INSTALL_OPTS}"
+
+        ./mvnw install ${MAVEN_FAST_INSTALL} -e -am -pl ${{ matrix.modules }}
+
+        '
+    - name: Maven Tests
+      if: needs.changes.outputs.codechange == 'true'
+      run: ./mvnw test ${MAVEN_TEST} -pl ${{ matrix.modules }} -Dtest="*,!TestArrowFlightNativeQueries*,!TestArrowFederationNativeQueries*"
+    name: arrowflight-java-tests (${{ matrix.java }}, ${{ matrix.modules }}, ${{ matrix.os }}, ${{ matrix.attempt }})
+  arrowflight-native-e2e-tests:
+    runs-on: ${{ matrix.os }}
+    container:
+      image: prestodb/presto-native-dependency:0.300-202610051009-aa529216
+      volumes:
+      - /usr:/host_usr
+      - /opt:/host_opt
+    env:
+      INSTALL_PREFIX: ${{ github.workspace }}/adapter-deps/install
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+        - modules: :presto-base-arrow-flight
+          testArgs: -Dtest="TestArrowFlightNativeQueries*"
+          connectorType: base
+          os: ubuntu-latest
+          java: 8
+        - modules: :presto-base-arrow-flight
+          testArgs: -Dtest="TestArrowFlightNativeQueries*"
+          connectorType: base
+          os: ubuntu-latest
+          java: 17
+        - modules: :presto-base-arrow-flight
+          testArgs: -Dtest="TestArrowFlightNativeQueries*"
+          connectorType: base
+          os: ubuntu-latest
+          java: 25
+        - modules: :presto-base-arrow-flight
+          testArgs: -Dtest="TestArrowFlightNativeQueries*"
+          connectorType: base
+          os: ubuntu-24.04-arm
+          java: 8
+        - modules: :presto-base-arrow-flight
+          testArgs: -Dtest="TestArrowFlightNativeQueries*"
+          connectorType: base
+          os: ubuntu-24.04-arm
+          java: 17
+        - modules: :presto-base-arrow-flight
+          testArgs: -Dtest="TestArrowFlightNativeQueries*"
+          connectorType: base
+          os: ubuntu-24.04-arm
+          java: 25
+        - modules: :presto-base-arrow-flight
+          testArgs: -Dtest="TestArrowFlightNativeQueries*"
+          connectorType: base
+          os: windows-latest
+          java: 8
+        - modules: :presto-base-arrow-flight
+          testArgs: -Dtest="TestArrowFlightNativeQueries*"
+          connectorType: base
+          os: windows-latest
+          java: 17
+        - modules: :presto-base-arrow-flight
+          testArgs: -Dtest="TestArrowFlightNativeQueries*"
+          connectorType: base
+          os: windows-latest
+          java: 25
+        - modules: :presto-base-arrow-flight
+          testArgs: -Dtest="TestArrowFlightNativeQueries*"
+          connectorType: base
+          os: windows-11-arm
+          java: 8
+        - modules: :presto-base-arrow-flight
+          testArgs: -Dtest="TestArrowFlightNativeQueries*"
+          connectorType: base
+          os: windows-11-arm
+          java: 17
+        - modules: :presto-base-arrow-flight
+          testArgs: -Dtest="TestArrowFlightNativeQueries*"
+          connectorType: base
+          os: windows-11-arm
+          java: 25
+        - modules: :presto-base-arrow-flight
+          testArgs: -Dtest="TestArrowFlightNativeQueries*"
+          connectorType: base
+          os: macos-15-intel
+          java: 8
+        - modules: :presto-base-arrow-flight
+          testArgs: -Dtest="TestArrowFlightNativeQueries*"
+          connectorType: base
+          os: macos-15-intel
+          java: 17
+        - modules: :presto-base-arrow-flight
+          testArgs: -Dtest="TestArrowFlightNativeQueries*"
+          connectorType: base
+          os: macos-15-intel
+          java: 25
+        - modules: :presto-base-arrow-flight
+          testArgs: -Dtest="TestArrowFlightNativeQueries*"
+          connectorType: base
+          os: macos-latest
+          java: 8
+        - modules: :presto-base-arrow-flight
+          testArgs: -Dtest="TestArrowFlightNativeQueries*"
+          connectorType: base
+          os: macos-latest
+          java: 17
+        - modules: :presto-base-arrow-flight
+          testArgs: -Dtest="TestArrowFlightNativeQueries*"
+          connectorType: base
+          os: macos-latest
+          java: 25
+        - modules: :presto-flight-shim
+          testArgs: -P jdbc-connectors
+          connectorType: jdbc
+          os: ubuntu-latest
+          java: 8
+        - modules: :presto-flight-shim
+          testArgs: -P jdbc-connectors
+          connectorType: jdbc
+          os: ubuntu-latest
+          java: 17
+        - modules: :presto-flight-shim
+          testArgs: -P jdbc-connectors
+          connectorType: jdbc
+          os: ubuntu-latest
+          java: 25
+        - modules: :presto-flight-shim
+          testArgs: -P jdbc-connectors
+          connectorType: jdbc
+          os: ubuntu-24.04-arm
+          java: 8
+        - modules: :presto-flight-shim
+          testArgs: -P jdbc-connectors
+          connectorType: jdbc
+          os: ubuntu-24.04-arm
+          java: 17
+        - modules: :presto-flight-shim
+          testArgs: -P jdbc-connectors
+          connectorType: jdbc
+          os: ubuntu-24.04-arm
+          java: 25
+        - modules: :presto-flight-shim
+          testArgs: -P jdbc-connectors
+          connectorType: jdbc
+          os: windows-latest
+          java: 8
+        - modules: :presto-flight-shim
+          testArgs: -P jdbc-connectors
+          connectorType: jdbc
+          os: windows-latest
+          java: 17
+        - modules: :presto-flight-shim
+          testArgs: -P jdbc-connectors
+          connectorType: jdbc
+          os: windows-latest
+          java: 25
+        - modules: :presto-flight-shim
+          testArgs: -P jdbc-connectors
+          connectorType: jdbc
+          os: windows-11-arm
+          java: 8
+        - modules: :presto-flight-shim
+          testArgs: -P jdbc-connectors
+          connectorType: jdbc
+          os: windows-11-arm
+          java: 17
+        - modules: :presto-flight-shim
+          testArgs: -P jdbc-connectors
+          connectorType: jdbc
+          os: windows-11-arm
+          java: 25
+        - modules: :presto-flight-shim
+          testArgs: -P jdbc-connectors
+          connectorType: jdbc
+          os: macos-15-intel
+          java: 8
+        - modules: :presto-flight-shim
+          testArgs: -P jdbc-connectors
+          connectorType: jdbc
+          os: macos-15-intel
+          java: 17
+        - modules: :presto-flight-shim
+          testArgs: -P jdbc-connectors
+          connectorType: jdbc
+          os: macos-15-intel
+          java: 25
+        - modules: :presto-flight-shim
+          testArgs: -P jdbc-connectors
+          connectorType: jdbc
+          os: macos-latest
+          java: 8
+        - modules: :presto-flight-shim
+          testArgs: -P jdbc-connectors
+          connectorType: jdbc
+          os: macos-latest
+          java: 17
+        - modules: :presto-flight-shim
+          testArgs: -P jdbc-connectors
+          connectorType: jdbc
+          os: macos-latest
+          java: 25
+        - modules: :presto-flight-shim
+          testArgs: -P non-jdbc-connectors
+          connectorType: non-jdbc
+          os: ubuntu-latest
+          java: 8
+        - modules: :presto-flight-shim
+          testArgs: -P non-jdbc-connectors
+          connectorType: non-jdbc
+          os: ubuntu-latest
+          java: 17
+        - modules: :presto-flight-shim
+          testArgs: -P non-jdbc-connectors
+          connectorType: non-jdbc
+          os: ubuntu-latest
+          java: 25
+        - modules: :presto-flight-shim
+          testArgs: -P non-jdbc-connectors
+          connectorType: non-jdbc
+          os: ubuntu-24.04-arm
+          java: 8
+        - modules: :presto-flight-shim
+          testArgs: -P non-jdbc-connectors
+          connectorType: non-jdbc
+          os: ubuntu-24.04-arm
+          java: 17
+        - modules: :presto-flight-shim
+          testArgs: -P non-jdbc-connectors
+          connectorType: non-jdbc
+          os: ubuntu-24.04-arm
+          java: 25
+        - modules: :presto-flight-shim
+          testArgs: -P non-jdbc-connectors
+          connectorType: non-jdbc
+          os: windows-latest
+          java: 8
+        - modules: :presto-flight-shim
+          testArgs: -P non-jdbc-connectors
+          connectorType: non-jdbc
+          os: windows-latest
+          java: 17
+        - modules: :presto-flight-shim
+          testArgs: -P non-jdbc-connectors
+          connectorType: non-jdbc
+          os: windows-latest
+          java: 25
+        - modules: :presto-flight-shim
+          testArgs: -P non-jdbc-connectors
+          connectorType: non-jdbc
+          os: windows-11-arm
+          java: 8
+        - modules: :presto-flight-shim
+          testArgs: -P non-jdbc-connectors
+          connectorType: non-jdbc
+          os: windows-11-arm
+          java: 17
+        - modules: :presto-flight-shim
+          testArgs: -P non-jdbc-connectors
+          connectorType: non-jdbc
+          os: windows-11-arm
+          java: 25
+        - modules: :presto-flight-shim
+          testArgs: -P non-jdbc-connectors
+          connectorType: non-jdbc
+          os: macos-15-intel
+          java: 8
+        - modules: :presto-flight-shim
+          testArgs: -P non-jdbc-connectors
+          connectorType: non-jdbc
+          os: macos-15-intel
+          java: 17
+        - modules: :presto-flight-shim
+          testArgs: -P non-jdbc-connectors
+          connectorType: non-jdbc
+          os: macos-15-intel
+          java: 25
+        - modules: :presto-flight-shim
+          testArgs: -P non-jdbc-connectors
+          connectorType: non-jdbc
+          os: macos-latest
+          java: 8
+        - modules: :presto-flight-shim
+          testArgs: -P non-jdbc-connectors
+          connectorType: non-jdbc
+          os: macos-latest
+          java: 17
+        - modules: :presto-flight-shim
+          testArgs: -P non-jdbc-connectors
+          connectorType: non-jdbc
+          os: macos-latest
+          java: 25
+        attempt:
+        - 1
+      max-parallel: 10
+    timeout-minutes: 60
+    concurrency:
+      group: ${{ github.workflow }}-test-${{ matrix.modules }}-${{ matrix.connectorType }}-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+    steps:
+    - name: Free Disk Space
+      run: '# Re-used from free-disk-space github action.
+
+        getAvailableSpace() { echo $(df -a $1 | awk ''NR > 1 {avail+=$4} END {print avail}''); }
+
+        # Show before
+
+        echo "Original available disk space: " $(getAvailableSpace)
+
+        # Remove DotNet.
+
+        rm -rf /host_usr/share/dotnet || true
+
+        # Remove android
+
+        rm -rf /host_usr/local/lib/android || true
+
+        # Remove CodeQL
+
+        rm -rf /host_opt/hostedtoolcache/CodeQL || true
+
+        # Show after
+
+        echo "New available disk space: " $(getAvailableSpace)
+
+        '
+    - uses: actions/checkout@v6
+      if: needs.changes.outputs.codechange == 'true'
+      with:
+        persist-credentials: false
+        repository: prestodb/presto
+        ref: f0872041be5b270237dcdf7da13445b51d1756d3
+    - uses: actions/checkout@v4
+      with:
+        path: _ci_expansion
+    - shell: bash
+      working-directory: .
+      run: f=$GITHUB_WORKSPACE/_ci_expansion/subject.patch; if [ -s $f ]; then git apply --ignore-whitespace $f; fi; rm -rf $GITHUB_WORKSPACE/_ci_expansion
+    - name: Fix git permissions
+      if: needs.changes.outputs.codechange == 'true'
+      run: git config --global --add safe.directory ${GITHUB_WORKSPACE}
+    - name: Download artifacts
+      if: needs.changes.outputs.codechange == 'true'
+      uses: actions/download-artifact@v4
+      with:
+        name: arrow-flight-presto-native-build
+        path: presto-native-execution/_build/release/presto_cpp/main
+    - name: Download Arrow Flight install artifacts
+      if: needs.changes.outputs.codechange == 'true'
+      uses: actions/download-artifact@v4
+      with:
+        name: arrow-flight-install
+        path: ${{ env.INSTALL_PREFIX }}/lib64
+    - name: Restore execute permissions and library path
+      if: needs.changes.outputs.codechange == 'true'
+      run: 'chmod +x ${GITHUB_WORKSPACE}/presto-native-execution/_build/release/presto_cpp/main/presto_server
+
+        # Ensure transitive dependency libboost-iostreams is found.
+
+        ldconfig /usr/local/lib
+
+        '
+    - name: Install OpenJDK8
+      if: needs.changes.outputs.codechange == 'true'
+      uses: actions/setup-java@v5
+      with:
+        distribution: temurin
+        java-version: ${{ matrix.java }}
+        cache: maven
+    - name: Download nodejs to maven cache
+      if: needs.changes.outputs.codechange == 'true'
+      run: .github/bin/download_nodejs
+    - name: Maven install
+      if: needs.changes.outputs.codechange == 'true'
+      env:
+        MAVEN_OPTS: -Xmx2G -XX:+ExitOnOutOfMemoryError
+      run: 'export MAVEN_OPTS="${MAVEN_INSTALL_OPTS}"
+
+        ./mvnw install ${MAVEN_FAST_INSTALL} -am -pl ${{ matrix.modules }}
+
+        '
+    - name: Run arrowflight native e2e tests
+      if: needs.changes.outputs.codechange == 'true'
+      run: "export PRESTO_SERVER_PATH=\"${GITHUB_WORKSPACE}/presto-native-execution/_build/release/presto_cpp/main/presto_server\"\nmvn test \\\n  ${MAVEN_TEST} \\\n  -pl ${{ matrix.modules }} \\\n  ${{ matrix.testArgs }} \\\n  -DPRESTO_SERVER=${PRESTO_SERVER_PATH} \\\n  -DDATA_DIR=${RUNNER_TEMP} \\\n  -Duser.timezone=America/Bahia_Banderas \\\n  -T1C\n"
+    name: arrowflight-native-e2e-tests (${{ matrix.connectorType }}, ${{ matrix.java }}, ${{ matrix.modules }}, ${{ matrix.os }}, ${{ matrix.testArgs }}, ${{ matrix.attempt }})
+env:
+  CONTINUOUS_INTEGRATION: true
+  MAVEN_OPTS: -Xmx1024M -XX:+ExitOnOutOfMemoryError
+  MAVEN_INSTALL_OPTS: -Xmx2G -XX:+ExitOnOutOfMemoryError
+  MAVEN_FAST_INSTALL: -B -V --quiet -T 1C -DskipTests -Dair.check.skip-all --no-transfer-progress -Dmaven.javadoc.skip=true
+  MAVEN_TEST: -B -Dair.check.skip-all -Dmaven.javadoc.skip=true -DLogTestDurationListener.enabled=true --no-transfer-progress --fail-at-end
+  RETRY: .github/bin/retry
+permissions:
+  contents: read
